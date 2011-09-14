@@ -31,6 +31,10 @@
 	$.fn.touchGallery.defaults = {
 		getSource: function() {
 			return this.href;
+		},
+		afterShown: function(page, thumb) {
+		},
+		afterHidden: function(page, thumb) {
 		}
 	};
 	
@@ -47,7 +51,8 @@
 		var img = new Image();
 		img.onload = function() {
 			clickedThumb.activity(false);
-			showGallery(thumbs, thumbs.index(clickedThumb), this, opts.getSource);
+			showGallery(thumbs, thumbs.index(clickedThumb), this,
+			    opts.getSource, opts.afterShown, opts.afterHidden);
 		};
 		img.src = $.proxy(opts.getSource, clickedThumb.get(0))();
 	}
@@ -55,7 +60,8 @@
 	/**
 	 * Creates DOM elements to actually show the gallery.
 	 */
-	function showGallery(thumbs, index, clickedImage, getSrcCallback) {
+	function showGallery(thumbs, index, clickedImage,
+	    getSrcCallback, afterShownCallback, afterHiddenCallback) {
 		var viewport = fitToView(preventTouch($('<div id="galleryViewport">').css({
 			position: 'fixed',
 			top: 0,
@@ -70,7 +76,8 @@
 			left: (-index * getInnerWidth()) + 'px'
 		}).width(thumbs.length * getInnerWidth()).transform(false).appendTo(viewport);
 		
-		setupEventListeners(stripe, getInnerWidth(), index, thumbs.length-1);
+		setupEventListeners(stripe, getInnerWidth(), index, thumbs.length-1,
+		    afterShownCallback, afterHiddenCallback);
 		
 		$(window).bind('orientationchange.gallery', function() {
 			fitToView(viewport);
@@ -89,9 +96,12 @@
 			if (i == index) {
 				var $img = $(clickedImage).css({position: 'absolute', display: 'block'}).transform(false);
 				makeInvisible(centerImage(index, clickedImage, $img)).appendTo(page);
+				var thumbAsThis = this;
 				zoomIn($(this), $img, function() {
 					stripe.addClass('ready');
 					loadSurroundingImages(index);
+					
+					afterShownCallback.call(thumbAsThis, page);
 				});
 				insertShade(viewport);
 			}
@@ -111,7 +121,7 @@
 		});
 	}
 	
-	function hideGallery(stripe) {
+	function hideGallery(stripe, afterHiddenCallback) {
 		if (stripe.is('.ready') && !stripe.is('.panning')) {
 			$('#galleryShade').remove();
 			var page = stripe.find('.galleryPage').eq(stripe.data('galleryIndex'));
@@ -122,6 +132,8 @@
 				makeVisible(thumb).transform(false);
 				$('#galleryViewport').remove();
 			});
+			
+			afterHiddenCallback.call(page.data('thumb').get(0), page);
 		}
 	}
 	
@@ -265,28 +277,44 @@
 	/**
 	 * Registers event listeners to enable flicking through the images.
 	 */
-	function setupEventListeners(el, pageWidth, currentIndex, max) {
+	function setupEventListeners(el, pageWidth, currentIndex, max,
+	    afterShownCallback, afterHiddenCallback) {
 		var scale = getViewportScale();
 		var xOffset = parseInt(el.css('left'), 10);
 		el.data('galleryIndex', currentIndex);
 		
 		function flick(dir) {
-			var i = el.data('galleryIndex');
-			makeVisible(getThumb(i));
-			i = Math.max(0, Math.min(i + dir, max));
-			el.data('galleryIndex', i);
-			makeInvisible(getThumb(i));
+			var prev = el.data('galleryIndex');
+			var prevPage = el.find('.galleryPage').eq(prev);
+			makeVisible(getThumb(prev));
+			var next = Math.max(0, Math.min(prev + dir, max));
+			var nextPage = el.find('.galleryPage').eq(next);
+			el.data('galleryIndex', next);
+			makeInvisible(getThumb(next));
 			
-			loadSurroundingImages(i);
+			loadSurroundingImages(next);
+			
+            if(prev != next) {
+                afterHiddenCallback.call(prevPage.data('thumb').get(0), prevPage);
+			}
 			
 			if ($.fn.transform.supported) {
-				var x = -i * pageWidth - xOffset;
+				var x = -next * pageWidth - xOffset;
 				if (x != el.transform().translate.x) {
-					el.addClass('panning').transformTransition({translate: {x: x}, onFinish: function() { this.removeClass('panning'); }});
+					el.addClass('panning').transformTransition({
+					    translate: {x: x},
+					    onFinish: function() {
+					        this.removeClass('panning');
+					        
+					        if(prev != next) {
+					            afterShownCallback.call(nextPage.data('thumb').get(0), nextPage);
+					        }
+					    }
+					});
 				}
 			}
 			else {
-				el.css('left', -i * pageWidth + 'px');
+				el.css('left', -next * pageWidth + 'px');
 			}
 		}
 		
@@ -347,7 +375,7 @@
 			flick(1);
 		})
 		.bind('click close', function() {
-			hideGallery(el);
+			hideGallery(el, afterHiddenCallback);
 		});
 	}
 	

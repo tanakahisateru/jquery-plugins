@@ -38,6 +38,14 @@ body {
 	margin: 0 8px 8px 0;
 }
 
+#galleryStripe .galleryPage .description {
+    position: absolute;
+    z-index: 1000;
+    bottom: 0;
+    left: 0;
+    padding: 0.5em 1.5em;
+    background: #000;
+}
 </style>
 </head>
 <body>
@@ -57,7 +65,16 @@ body {
 				getSource: function() {
 					var f = $(this).data('flickr');
 					return f.url_o || f.url_sq.replace('_s.', '_b.');
-				}
+				},
+                afterShown: function(page) {
+                    console.log('shown', page, this);
+					var f = $(this).data('flickr');
+                    $('<div>').addClass('description').text(f.title).appendTo(page);
+                },
+                afterHidden: function(page) {
+                    console.log('hidden', page, this);
+                    page.find('.description').remove();
+                }
 			});
 		});
 		
